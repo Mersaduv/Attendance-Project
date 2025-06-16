@@ -1,0 +1,272 @@
+@page "/employees"
+@using NewAttendanceProject.Models
+@using NewAttendanceProject.Services
+@inject EmployeeService EmployeeService
+@inject DepartmentService DepartmentService
+@inject NavigationManager NavigationManager
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Employees</PageTitle>
+
+<h1>Employees</h1>
+
+<div class="row mb-3">
+    <div class="col">
+        <button class="btn btn-primary" @onclick="() => ShowAddModal()">
+            <i class="oi oi-plus"></i> Add Employee
+        </button>
+    </div>
+</div>
+
+@if (employees == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Position</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Hire Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var employee in employees)
+                {
+                    <tr>
+                        <td>@employee.Id</td>
+                        <td>@employee.FullName</td>
+                        <td>@employee.Department.Name</td>
+                        <td>@employee.Position</td>
+                        <td>@employee.Email</td>
+                        <td>@employee.PhoneNumber</td>
+                        <td>@employee.HireDate.ToShortDateString()</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" @onclick="() => ShowEditModal(employee)">
+                                <i class="oi oi-pencil"></i> Edit
+                            </button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => ShowDeleteModal(employee)">
+                                <i class="oi oi-trash"></i> Delete
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (showModal)
+{
+    <div class="modal fade show" style="display:block" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentEmployee" OnValidSubmit="HandleValidSubmit" FormName="employeeForm">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="firstName" class="form-label">First Name <span class="text-danger">*</span></label>
+                                <InputText id="firstName" @bind-Value="currentEmployee.FirstName" class="form-control" @oninput="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.FirstName)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="lastName" class="form-label">Last Name <span class="text-danger">*</span></label>
+                                <InputText id="lastName" @bind-Value="currentEmployee.LastName" class="form-control" @oninput="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.LastName)" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
+                                <InputText id="email" @bind-Value="currentEmployee.Email" class="form-control" @oninput="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.Email)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="phone" class="form-label">Phone Number <span class="text-danger">*</span></label>
+                                <InputText id="phone" @bind-Value="currentEmployee.PhoneNumber" class="form-control" @oninput="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.PhoneNumber)" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="department" class="form-label">Department <span class="text-danger">*</span></label>
+                                <InputSelect id="department" @bind-Value="currentEmployee.DepartmentId" class="form-select" @onchange="ValidateForm">
+                                    @foreach (var department in departments)
+                                    {
+                                        <option value="@department.Id">@department.Name</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => currentEmployee.DepartmentId)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="position" class="form-label">Position <span class="text-danger">*</span></label>
+                                <InputText id="position" @bind-Value="currentEmployee.Position" class="form-control" @oninput="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.Position)" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="employeeCode" class="form-label">Employee Code <span class="text-danger">*</span></label>
+                                <InputText id="employeeCode" @bind-Value="currentEmployee.EmployeeCode" class="form-control" @oninput="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.EmployeeCode)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="hireDate" class="form-label">Hire Date <span class="text-danger">*</span></label>
+                                <InputDate id="hireDate" @bind-Value="currentEmployee.HireDate" class="form-control" @onchange="ValidateForm" />
+                                <ValidationMessage For="@(() => currentEmployee.HireDate)" />
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (showDeleteModal)
+{
+    <div class="modal fade show" style="display:block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Delete</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDeleteModal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the employee: <strong>@currentEmployee.FullName</strong>?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDeleteModal">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteEmployee">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<Employee> employees;
+    private List<Department> departments;
+    private Employee currentEmployee = new Employee();
+    private bool showModal = false;
+    private bool showDeleteModal = false;
+    private string modalTitle = "";
+    private bool isFormValid = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        departments = await DepartmentService.GetAllAsync();
+        await LoadEmployees();
+    }
+
+    private async Task LoadEmployees()
+    {
+        employees = await EmployeeService.GetAllAsync();
+    }
+
+    private void ShowAddModal()
+    {
+        currentEmployee = new Employee
+        {
+            HireDate = DateTime.Today,
+            DepartmentId = departments.FirstOrDefault()?.Id ?? 0
+        };
+        modalTitle = "Add Employee";
+        showModal = true;
+        isFormValid = false; // Reset form validation
+    }
+
+    private void ShowEditModal(Employee employee)
+    {
+        currentEmployee = new Employee
+        {
+            Id = employee.Id,
+            FirstName = employee.FirstName,
+            LastName = employee.LastName,
+            Email = employee.Email,
+            PhoneNumber = employee.PhoneNumber,
+            DepartmentId = employee.DepartmentId,
+            Position = employee.Position,
+            EmployeeCode = employee.EmployeeCode,
+            HireDate = employee.HireDate
+        };
+        modalTitle = "Edit Employee";
+        showModal = true;
+        ValidateForm(); // Validate form for editing
+    }
+
+    private void ShowDeleteModal(Employee employee)
+    {
+        currentEmployee = employee;
+        showDeleteModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private void CloseDeleteModal()
+    {
+        showDeleteModal = false;
+    }
+
+    private void ValidateForm()
+    {
+        // Check if all required fields are filled
+        isFormValid = !string.IsNullOrWhiteSpace(currentEmployee.FirstName) &&
+                      !string.IsNullOrWhiteSpace(currentEmployee.LastName) &&
+                      !string.IsNullOrWhiteSpace(currentEmployee.Email) &&
+                      !string.IsNullOrWhiteSpace(currentEmployee.PhoneNumber) &&
+                      !string.IsNullOrWhiteSpace(currentEmployee.Position) &&
+                      !string.IsNullOrWhiteSpace(currentEmployee.EmployeeCode) &&
+                      currentEmployee.DepartmentId > 0;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (currentEmployee.Id == 0)
+        {
+            await EmployeeService.CreateAsync(currentEmployee);
+        }
+        else
+        {
+            await EmployeeService.UpdateAsync(currentEmployee);
+        }
+
+        await LoadEmployees();
+        showModal = false;
+    }
+
+    private async Task DeleteEmployee()
+    {
+        await EmployeeService.DeleteAsync(currentEmployee.Id);
+        await LoadEmployees();
+        showDeleteModal = false;
+    }
+} 

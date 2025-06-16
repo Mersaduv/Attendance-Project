@@ -1,0 +1,12 @@
+@inject NavigationManager Navigation
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Get the current path relative to the base URL
+        var returnUrl = Navigation.ToBaseRelativePath(Navigation.Uri);
+        
+        // Navigate to the login page with the return URL as a query parameter
+        Navigation.NavigateTo($"Identity/Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+    }
+} 

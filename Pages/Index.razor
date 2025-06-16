@@ -1,0 +1,192 @@
+﻿@page "/"
+@using NewAttendanceProject.Models
+@using NewAttendanceProject.Services
+@inject AttendanceService AttendanceService
+@inject EmployeeService EmployeeService
+@inject DepartmentService DepartmentService
+@attribute [Authorize]
+
+<PageTitle>Dashboard - Attendance System</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Dashboard</h1>
+    <div class="text-end">
+        <div class="h5 mb-0">@DateTime.Now.ToString("dddd, MMMM d, yyyy")</div>
+        <div>@currentTime</div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h5 class="card-title">Employees</h5>
+                <div class="display-4">@(employeeCount)</div>
+                <p class="card-text">Total registered employees</p>
+                <a href="/employees" class="btn btn-light mt-2">Manage Employees</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title">Present Today</h5>
+                <div class="display-4">@(todayAttendanceCount)</div>
+                <p class="card-text">Employees checked-in today</p>
+                <a href="/attendance" class="btn btn-light mt-2">Attendance Tracking</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h5 class="card-title">Departments</h5>
+                <div class="display-4">@(departmentCount)</div>
+                <p class="card-text">Active departments</p>
+                <a href="/departments" class="btn btn-light mt-2">Manage Departments</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Recent Attendance</h5>
+            </div>
+            <div class="card-body">
+                @if (recentAttendance == null)
+                {
+                    <p><em>Loading...</em></p>
+                }
+                else if (recentAttendance.Count == 0)
+                {
+                    <p>No recent attendance records found.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th>Date</th>
+                                    <th>Check In</th>
+                                    <th>Check Out</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var attendance in recentAttendance)
+                                {
+                                    <tr>
+                                        <td>@attendance.Employee?.FullName</td>
+                                        <td>@attendance.Employee?.Department?.Name</td>
+                                        <td>@attendance.Date.ToString("yyyy-MM-dd")</td>
+                                        <td>@(attendance.CheckInTime?.ToString("HH:mm:ss") ?? "-")</td>
+                                        <td>@(attendance.CheckOutTime?.ToString("HH:mm:ss") ?? "-")</td>
+                                        <td>
+                                            @if (attendance.IsComplete)
+                                            {
+                                                <span class="badge bg-success">Complete</span>
+                                            }
+                                            else if (attendance.CheckInTime.HasValue)
+                                            {
+                                                <span class="badge bg-warning">Checked In</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-danger">Incomplete</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-end mt-3">
+                        <a href="/reports" class="btn btn-primary">View All Reports</a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <a href="/attendance" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">Record Attendance</h5>
+                            <i class="oi oi-clock"></i>
+                        </div>
+                        <p class="mb-1">Check-in or check-out employees</p>
+                    </a>
+                    <a href="/reports" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">Generate Report</h5>
+                            <i class="oi oi-document"></i>
+                        </div>
+                        <p class="mb-1">Create attendance reports</p>
+                    </a>
+                    <a href="/employees" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">Add Employee</h5>
+                            <i class="oi oi-person"></i>
+                        </div>
+                        <p class="mb-1">Register a new employee</p>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string currentTime = DateTime.Now.ToString("HH:mm:ss");
+    private List<Attendance> recentAttendance;
+    private int employeeCount;
+    private int departmentCount;
+    private int todayAttendanceCount;
+    private System.Threading.Timer timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+
+        // Update time every second
+        timer = new System.Threading.Timer(_ =>
+        {
+            currentTime = DateTime.Now.ToString("HH:mm:ss");
+            InvokeAsync(StateHasChanged);
+        }, null, 0, 1000);
+    }
+
+    private async Task LoadDashboardData()
+    {
+        var employees = await EmployeeService.GetAllAsync();
+        employeeCount = employees.Count;
+
+        var departments = await DepartmentService.GetAllAsync();
+        departmentCount = departments.Count;
+
+        // Get attendance for the last 7 days
+        var endDate = DateTime.Today;
+        var startDate = endDate.AddDays(-7);
+        var allAttendance = await AttendanceService.GetByDateRangeAsync(startDate, endDate);
+        recentAttendance = allAttendance.OrderByDescending(a => a.Date).Take(5).ToList();
+
+        // Count today's attendance
+        todayAttendanceCount = allAttendance.Count(a => a.Date == DateTime.Today);
+    }
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+    }
+}

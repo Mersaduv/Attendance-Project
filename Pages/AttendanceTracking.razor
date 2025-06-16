@@ -1,0 +1,472 @@
+@page "/attendance"
+@using NewAttendanceProject.Models
+@using NewAttendanceProject.Services
+@inject AttendanceService AttendanceService
+@inject EmployeeService EmployeeService
+@inject NavigationManager NavigationManager
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Attendance Tracking</PageTitle>
+
+<h1>Attendance Tracking</h1>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Check In / Check Out</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="employee" class="form-label fw-bold">Select Employee</label>
+                    <select id="employee" class="form-select" value="@selectedEmployeeId" @onchange="EmployeeSelectionChanged">
+                        <option value="0">-- Select Employee --</option>
+                        @if (employees != null)
+                        {
+                            @foreach (var employee in employees)
+                            {
+                                <option value="@employee.Id">@employee.FullName (@employee.Department?.Name)</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                @if (selectedEmployeeId > 0)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <span class="fw-bold">Status:</span>
+                                @if (selectedEmployeeStatus == AttendanceStatus.NotCheckedIn)
+                                {
+                                    <span class="badge bg-secondary ms-2">Not Checked In</span>
+                                }
+                                else if (selectedEmployeeStatus == AttendanceStatus.CheckedIn)
+                                {
+                                    <span class="badge bg-success ms-2">Checked In</span>
+                                    <div class="small text-muted mt-1">Check-in time: @selectedEmployeeAttendance?.CheckInTime?.ToString("HH:mm:ss")</div>
+                                }
+                                else if (selectedEmployeeStatus == AttendanceStatus.CheckedOut)
+                                {
+                                    <span class="badge bg-info ms-2">Checked Out</span>
+                                    <div class="small text-muted mt-1">
+                                        Check-in: @selectedEmployeeAttendance?.CheckInTime?.ToString("HH:mm:ss") | 
+                                        Check-out: @selectedEmployeeAttendance?.CheckOutTime?.ToString("HH:mm:ss")
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success" @onclick="CheckIn" disabled="@(!CanCheckIn())">
+                        <i class="oi oi-clock"></i> Check In
+                    </button>
+                    <button class="btn btn-warning" @onclick="CheckOut" disabled="@(!CanCheckOut())">
+                        <i class="oi oi-clock"></i> Check Out
+                    </button>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(message))
+                {
+                    <div class="alert @alertClass mt-3" role="alert">
+                        @message
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">Current Date and Time</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="display-4">@DateTime.Now.ToString("yyyy-MM-dd")</div>
+                <div class="display-5">@currentTime</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">Today's Attendance</h5>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary me-2" @onclick="() => FilterAttendance(AttendanceStatus.All)">
+                All <span class="badge bg-secondary">@(todayAttendance?.Count ?? 0)</span>
+            </button>
+            <button class="btn btn-sm btn-outline-success me-2" @onclick="() => FilterAttendance(AttendanceStatus.CheckedIn)">
+                Checked In <span class="badge bg-success">@(todayAttendance?.Count(a => a.CheckInTime.HasValue && !a.CheckOutTime.HasValue) ?? 0)</span>
+            </button>
+            <button class="btn btn-sm btn-outline-info" @onclick="() => FilterAttendance(AttendanceStatus.CheckedOut)">
+                Checked Out <span class="badge bg-info">@(todayAttendance?.Count(a => a.CheckInTime.HasValue && a.CheckOutTime.HasValue) ?? 0)</span>
+            </button>
+            <button class="btn btn-sm btn-primary ms-2" @onclick="LoadTodayAttendance">
+                <i class="oi oi-reload"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (todayAttendance == null)
+        {
+            <p><em>Loading...</em></p>
+        }
+        else if (filteredAttendance.Count == 0)
+        {
+            <p>No attendance records found for the selected filter.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Employee</th>
+                            <th>Department</th>
+                            <th>Check In</th>
+                            <th>Check Out</th>
+                            <th>Duration</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var attendance in filteredAttendance)
+                        {
+                            <tr>
+                                <td>@attendance.Employee?.FullName</td>
+                                <td>@attendance.Employee?.Department?.Name</td>
+                                <td>@(attendance.CheckInTime?.ToString("HH:mm:ss") ?? "-")</td>
+                                <td>@(attendance.CheckOutTime?.ToString("HH:mm:ss") ?? "-")</td>
+                                <td>@(attendance.WorkDuration?.ToString(@"hh\:mm\:ss") ?? "-")</td>
+                                <td>
+                                    @if (attendance.IsComplete)
+                                    {
+                                        <span class="badge bg-info">Complete</span>
+                                    }
+                                    else if (attendance.CheckInTime.HasValue)
+                                    {
+                                        <span class="badge bg-success">Checked In</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Not Started</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" @onclick="() => ShowEditModal(attendance)">
+                                        <i class="oi oi-pencil"></i> Edit
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showModal)
+{
+    <div class="modal fade show" style="display:block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Edit Attendance</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentAttendance" OnValidSubmit="HandleValidSubmit">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="employeeName" class="form-label fw-bold">Employee</label>
+                            <input id="employeeName" class="form-control" value="@currentAttendance.Employee?.FullName" disabled />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="checkInTime" class="form-label fw-bold">Check In Time</label>
+                                <input type="datetime-local" id="checkInTime" @bind="currentAttendance.CheckInTime" class="form-control" />
+                                <ValidationMessage For="@(() => currentAttendance.CheckInTime)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="checkOutTime" class="form-label fw-bold">Check Out Time</label>
+                                <input type="datetime-local" id="checkOutTime" @bind="currentAttendance.CheckOutTime" class="form-control" />
+                                <ValidationMessage For="@(() => currentAttendance.CheckOutTime)" />
+                                @if (currentAttendance.CheckOutTime.HasValue && currentAttendance.CheckInTime.HasValue && 
+                                     currentAttendance.CheckOutTime.Value <= currentAttendance.CheckInTime.Value)
+                                {
+                                    <div class="text-danger small mt-1">Check-out time must be after check-in time</div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="notes" class="form-label fw-bold">Notes</label>
+                            <textarea id="notes" @bind="currentAttendance.Notes" class="form-control" rows="3"></textarea>
+                            <ValidationMessage For="@(() => currentAttendance.Notes)" />
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary" disabled="@(!IsValidAttendance())">Save</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<Employee> employees;
+    private List<Attendance> todayAttendance;
+    private List<Attendance> filteredAttendance = new List<Attendance>();
+    private int selectedEmployeeId = 0;
+    private string message = "";
+    private string alertClass = "alert-info";
+    private string currentTime = DateTime.Now.ToString("HH:mm:ss");
+    private bool showModal = false;
+    private Attendance currentAttendance = new Attendance();
+    private System.Threading.Timer timer;
+    private Attendance selectedEmployeeAttendance;
+    private AttendanceStatus selectedEmployeeStatus = AttendanceStatus.NotCheckedIn;
+    private AttendanceStatus currentFilter = AttendanceStatus.All;
+
+    protected override async Task OnInitializedAsync()
+    {
+        employees = await EmployeeService.GetAllAsync();
+        await LoadTodayAttendance();
+
+        // Update time every second
+        timer = new System.Threading.Timer(_ =>
+        {
+            currentTime = DateTime.Now.ToString("HH:mm:ss");
+            InvokeAsync(StateHasChanged);
+        }, null, 0, 1000);
+    }
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+    }
+
+    private async Task LoadTodayAttendance()
+    {
+        try
+        {
+            todayAttendance = await AttendanceService.GetByDateRangeAsync(DateTime.Today, DateTime.Today);
+            FilterAttendance(currentFilter);
+            
+            if (selectedEmployeeId > 0)
+            {
+                await UpdateSelectedEmployeeStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Error loading attendance data: {ex.Message}";
+            alertClass = "alert-danger";
+        }
+    }
+
+    private void FilterAttendance(AttendanceStatus status)
+    {
+        currentFilter = status;
+        
+        if (todayAttendance == null)
+        {
+            filteredAttendance = new List<Attendance>();
+            return;
+        }
+
+        filteredAttendance = status switch
+        {
+            AttendanceStatus.CheckedIn => todayAttendance
+                .Where(a => a.CheckInTime.HasValue && !a.CheckOutTime.HasValue)
+                .ToList(),
+            AttendanceStatus.CheckedOut => todayAttendance
+                .Where(a => a.CheckInTime.HasValue && a.CheckOutTime.HasValue)
+                .ToList(),
+            _ => todayAttendance.ToList()
+        };
+    }
+
+    private void EmployeeSelectionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value.ToString(), out int newEmployeeId))
+        {
+            selectedEmployeeId = newEmployeeId;
+            if (selectedEmployeeId > 0)
+            {
+                // Call the async method safely
+                InvokeAsync(async () => await UpdateSelectedEmployeeStatus());
+            }
+            else
+            {
+                selectedEmployeeStatus = AttendanceStatus.NotCheckedIn;
+                selectedEmployeeAttendance = null;
+            }
+            
+            // Clear any previous messages
+            message = "";
+        }
+    }
+
+    private async Task UpdateSelectedEmployeeStatus()
+    {
+        try
+        {
+            selectedEmployeeAttendance = await AttendanceService.GetByEmployeeAndDateAsync(selectedEmployeeId, DateTime.Today);
+            
+            if (selectedEmployeeAttendance == null)
+            {
+                selectedEmployeeStatus = AttendanceStatus.NotCheckedIn;
+            }
+            else if (selectedEmployeeAttendance.CheckInTime.HasValue && !selectedEmployeeAttendance.CheckOutTime.HasValue)
+            {
+                selectedEmployeeStatus = AttendanceStatus.CheckedIn;
+            }
+            else if (selectedEmployeeAttendance.CheckInTime.HasValue && selectedEmployeeAttendance.CheckOutTime.HasValue)
+            {
+                selectedEmployeeStatus = AttendanceStatus.CheckedOut;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Error retrieving employee attendance status: {ex.Message}";
+            alertClass = "alert-danger";
+        }
+    }
+
+    private bool CanCheckIn()
+    {
+        if (selectedEmployeeId == 0)
+            return false;
+            
+        return selectedEmployeeStatus == AttendanceStatus.NotCheckedIn || 
+               (selectedEmployeeStatus == AttendanceStatus.CheckedOut && DateTime.Now.TimeOfDay > new TimeSpan(12, 0, 0));
+    }
+
+    private bool CanCheckOut()
+    {
+        if (selectedEmployeeId == 0)
+            return false;
+            
+        return selectedEmployeeStatus == AttendanceStatus.CheckedIn;
+    }
+
+    private async Task CheckIn()
+    {
+        if (selectedEmployeeId == 0) return;
+
+        try
+        {
+            await AttendanceService.CheckInAsync(selectedEmployeeId);
+            message = "Check-in recorded successfully!";
+            alertClass = "alert-success";
+            await LoadTodayAttendance();
+            await UpdateSelectedEmployeeStatus();
+        }
+        catch (Exception ex)
+        {
+            message = $"Error recording check-in: {ex.Message}";
+            alertClass = "alert-danger";
+        }
+    }
+
+    private async Task CheckOut()
+    {
+        if (selectedEmployeeId == 0) return;
+
+        try
+        {
+            var attendance = await AttendanceService.CheckOutAsync(selectedEmployeeId);
+            if (attendance != null)
+            {
+                message = "Check-out recorded successfully!";
+                alertClass = "alert-success";
+                await LoadTodayAttendance();
+                await UpdateSelectedEmployeeStatus();
+            }
+            else
+            {
+                message = "No check-in found for today. Please check-in first.";
+                alertClass = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Error recording check-out: {ex.Message}";
+            alertClass = "alert-danger";
+        }
+    }
+
+    private void ShowEditModal(Attendance attendance)
+    {
+        // Create a copy of the attendance record to avoid modifying the original directly
+        currentAttendance = new Attendance
+        {
+            Id = attendance.Id,
+            EmployeeId = attendance.EmployeeId,
+            Employee = attendance.Employee,
+            Date = attendance.Date,
+            CheckInTime = attendance.CheckInTime,
+            CheckOutTime = attendance.CheckOutTime,
+            Notes = attendance.Notes
+        };
+        
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private bool IsValidAttendance()
+    {
+        if (currentAttendance.CheckOutTime.HasValue && currentAttendance.CheckInTime.HasValue)
+        {
+            return currentAttendance.CheckOutTime.Value > currentAttendance.CheckInTime.Value;
+        }
+        
+        return true;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (!IsValidAttendance())
+        {
+            return;
+        }
+        
+        try
+        {
+            await AttendanceService.UpdateAsync(currentAttendance);
+            await LoadTodayAttendance();
+            message = "Attendance updated successfully!";
+            alertClass = "alert-success";
+            showModal = false;
+        }
+        catch (Exception ex)
+        {
+            message = $"Error updating attendance: {ex.Message}";
+            alertClass = "alert-danger";
+        }
+    }
+    
+    private enum AttendanceStatus
+    {
+        All,
+        NotCheckedIn,
+        CheckedIn,
+        CheckedOut
+    }
+} 

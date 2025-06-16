@@ -1,0 +1,278 @@
+@page "/reports"
+@using NewAttendanceProject.Models
+@using NewAttendanceProject.Services
+@inject ReportService ReportService
+@inject EmployeeService EmployeeService
+@inject DepartmentService DepartmentService
+@inject IPrintingService PrintingService
+@inject NavigationManager NavigationManager
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Attendance Reports</PageTitle>
+
+<h1>Attendance Reports</h1>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Generate Report</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label for="reportType" class="form-label">Report Type</label>
+                    <select id="reportType" class="form-select" @bind="reportType">
+                        <option value="employee">Employee Report</option>
+                        <option value="department">Department Report</option>
+                        <option value="company">Company-wide Report</option>
+                    </select>
+                </div>
+            </div>
+            
+            @if (reportType == "employee")
+            {
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label for="employee" class="form-label">Select Employee</label>
+                        <select id="employee" class="form-select" @bind="selectedEmployeeId">
+                            <option value="0">-- Select Employee --</option>
+                            @if (employees != null)
+                            {
+                                @foreach (var employee in employees)
+                                {
+                                    <option value="@employee.Id">@employee.FullName (@employee.Department?.Name)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+            }
+            else if (reportType == "department")
+            {
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label for="department" class="form-label">Select Department</label>
+                        <select id="department" class="form-select" @bind="selectedDepartmentId">
+                            <option value="0">-- Select Department --</option>
+                            @if (departments != null)
+                            {
+                                @foreach (var department in departments)
+                                {
+                                    <option value="@department.Id">@department.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+            }
+            
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <input type="date" id="startDate" class="form-control" @bind="startDate" />
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label for="endDate" class="form-label">End Date</label>
+                    <input type="date" id="endDate" class="form-control" @bind="endDate" />
+                </div>
+            </div>
+        </div>
+        
+        <button class="btn btn-primary" @onclick="GenerateReport" disabled="@IsGenerateDisabled()">
+            <i class="oi oi-list"></i> Generate Report
+        </button>
+        
+        <button class="btn btn-secondary ms-2" @onclick="PrintReport" disabled="@(report == null || report.Count == 0)">
+            <i class="oi oi-print"></i> Print Report
+        </button>
+    </div>
+</div>
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">
+        @errorMessage
+    </div>
+}
+
+@if (report != null && report.Count > 0)
+{
+    <div class="card" id="reportContent">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                @GetReportTitle()
+            </h5>
+            <div>
+                <span class="badge bg-primary">
+                    @startDate.ToString("yyyy-MM-dd") to @endDate.ToString("yyyy-MM-dd")
+                </span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            @if (reportType != "employee")
+                            {
+                                <th>Employee</th>
+                            }
+                            @if (reportType == "company")
+                            {
+                                <th>Department</th>
+                            }
+                            <th>Check In</th>
+                            <th>Check Out</th>
+                            <th>Duration</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in report)
+                        {
+                            <tr>
+                                <td>@item.Date.ToString("yyyy-MM-dd")</td>
+                                @if (reportType != "employee")
+                                {
+                                    <td>@item.EmployeeName</td>
+                                }
+                                @if (reportType == "company")
+                                {
+                                    <td>@item.DepartmentName</td>
+                                }
+                                <td>@(item.CheckInTime?.ToString("HH:mm:ss") ?? "-")</td>
+                                <td>@(item.CheckOutTime?.ToString("HH:mm:ss") ?? "-")</td>
+                                <td>@(item.WorkDuration?.ToString(@"hh\:mm\:ss") ?? "-")</td>
+                                <td>
+                                    @if (item.Status == "Present")
+                                    {
+                                        <span class="badge bg-success">Present</span>
+                                    }
+                                    else if (item.Status == "Incomplete")
+                                    {
+                                        <span class="badge bg-warning">Incomplete</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">@item.Status</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-4">
+                <h5>Summary</h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Total Days</h6>
+                                <p class="card-text display-6">@GetDaysInRange()</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Present Days</h6>
+                                <p class="card-text display-6">@report.Count(r => r.Status == "Present")</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Absence Days</h6>
+                                <p class="card-text display-6">@report.Count(r => r.Status == "Absent")</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string reportType = "employee";
+    private int selectedEmployeeId = 0;
+    private int selectedDepartmentId = 0;
+    private DateTime startDate = DateTime.Today.AddDays(-7);
+    private DateTime endDate = DateTime.Today;
+    private List<AttendanceReportItem> report;
+    private List<Employee> employees;
+    private List<Department> departments;
+    private string errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        employees = await EmployeeService.GetAllAsync();
+        departments = await DepartmentService.GetAllAsync();
+    }
+
+    private bool IsGenerateDisabled()
+    {
+        if (reportType == "employee" && selectedEmployeeId == 0)
+            return true;
+            
+        if (reportType == "department" && selectedDepartmentId == 0)
+            return true;
+            
+        return startDate > endDate;
+    }
+
+    private async Task GenerateReport()
+    {
+        errorMessage = null;
+        
+        try
+        {
+            report = reportType switch
+            {
+                "employee" => await ReportService.GenerateEmployeeAttendanceReportAsync(
+                    selectedEmployeeId, startDate, endDate),
+                "department" => await ReportService.GenerateDepartmentAttendanceReportAsync(
+                    selectedDepartmentId, startDate, endDate),
+                "company" => await ReportService.GenerateCompanyAttendanceReportAsync(
+                    startDate, endDate),
+                _ => null
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error generating report: {ex.Message}";
+            report = null;
+        }
+    }
+
+    private string GetReportTitle()
+    {
+        return reportType switch
+        {
+            "employee" => $"Employee Report: {employees?.FirstOrDefault(e => e.Id == selectedEmployeeId)?.FullName}",
+            "department" => $"Department Report: {departments?.FirstOrDefault(d => d.Id == selectedDepartmentId)?.Name}",
+            "company" => "Company-wide Attendance Report",
+            _ => "Attendance Report"
+        };
+    }
+
+    private int GetDaysInRange()
+    {
+        return (endDate - startDate).Days + 1;
+    }
+
+    private async Task PrintReport()
+    {
+        if (report == null || report.Count == 0)
+            return;
+
+        await PrintingService.PrintAsync("reportContent");
+    }
+} 
