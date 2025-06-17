@@ -1,0 +1,430 @@
+@page "/work-schedules"
+@using NewAttendanceProject.Models
+@using NewAttendanceProject.Services
+@using AutoMapper
+@inject WorkScheduleService WorkScheduleService
+@inject DepartmentService DepartmentService
+@inject EmployeeService EmployeeService
+@inject IMapper Mapper
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Work Schedules - GhalibHR Attendance</PageTitle>
+
+<div class="container-fluid">
+    <h1 class="mt-4">Work Schedules</h1>
+    <p class="lead">Manage work schedules for departments and employees.</p>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <button class="btn btn-primary" @onclick="() => OpenScheduleModal(new WorkSchedule())">
+                <i class="fas fa-plus"></i> Add New Schedule
+            </button>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-12">
+            @if (workSchedules == null)
+            {
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (!workSchedules.Any())
+            {
+                <div class="alert alert-info">
+                    No work schedules found. Click "Add New Schedule" to create one.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Name</th>
+                                <th>Working Hours</th>
+                                <th>Working Days</th>
+                                <th>Department</th>
+                                <th>Grace Period</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var schedule in workSchedules)
+                            {
+                                <tr>
+                                    <td>@schedule.Name</td>
+                                    <td>@schedule.StartTime.ToString(@"hh\:mm") - @schedule.EndTime.ToString(@"hh\:mm")</td>
+                                    <td>
+                                        @if (schedule.IsWorkingDaySunday) { <span class="badge bg-primary me-1">Sun</span> }
+                                        @if (schedule.IsWorkingDayMonday) { <span class="badge bg-primary me-1">Mon</span> }
+                                        @if (schedule.IsWorkingDayTuesday) { <span class="badge bg-primary me-1">Tue</span> }
+                                        @if (schedule.IsWorkingDayWednesday) { <span class="badge bg-primary me-1">Wed</span> }
+                                        @if (schedule.IsWorkingDayThursday) { <span class="badge bg-primary me-1">Thu</span> }
+                                        @if (schedule.IsWorkingDayFriday) { <span class="badge bg-primary me-1">Fri</span> }
+                                        @if (schedule.IsWorkingDaySaturday) { <span class="badge bg-primary me-1">Sat</span> }
+                                    </td>
+                                    <td>
+                                        @if (schedule.Department != null)
+                                        {
+                                            @schedule.Department.Name
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Not assigned</span>
+                                        }
+                                    </td>
+                                    <td>@schedule.FlexTimeAllowanceMinutes min</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-info" @onclick="() => OpenScheduleModal(schedule)">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-success" @onclick="() => OpenAssignModal(schedule)">
+                                                <i class="fas fa-user-plus"></i> Assign
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" @onclick="() => DeleteSchedule(schedule.Id)">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Schedule Modal -->
+@if (showScheduleModal)
+{
+    <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(currentSchedule.Id == 0 ? "Add New" : "Edit") Work Schedule</h5>
+                    <button type="button" class="btn-close" @onclick="CloseScheduleModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentSchedule" OnValidSubmit="SaveSchedule">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">Name</label>
+                                <InputText @bind-Value="currentSchedule.Name" class="form-control" />
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Start Time</label>
+                                <InputText @bind-Value="startTimeString" class="form-control" type="time" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">End Time</label>
+                                <InputText @bind-Value="endTimeString" class="form-control" type="time" />
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">Working Days</label>
+                                <div class="d-flex gap-2">
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDaySunday" class="form-check-input" id="sunday" />
+                                        <label class="form-check-label" for="sunday">Sunday</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDayMonday" class="form-check-input" id="monday" />
+                                        <label class="form-check-label" for="monday">Monday</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDayTuesday" class="form-check-input" id="tuesday" />
+                                        <label class="form-check-label" for="tuesday">Tuesday</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDayWednesday" class="form-check-input" id="wednesday" />
+                                        <label class="form-check-label" for="wednesday">Wednesday</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDayThursday" class="form-check-input" id="thursday" />
+                                        <label class="form-check-label" for="thursday">Thursday</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDayFriday" class="form-check-input" id="friday" />
+                                        <label class="form-check-label" for="friday">Friday</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="currentSchedule.IsWorkingDaySaturday" class="form-check-input" id="saturday" />
+                                        <label class="form-check-label" for="saturday">Saturday</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Grace Period (minutes)</label>
+                                <InputNumber @bind-Value="currentSchedule.FlexTimeAllowanceMinutes" class="form-control" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Description</label>
+                                <InputTextArea @bind-Value="currentSchedule.Description" class="form-control" rows="2" />
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h5>Assign Schedule</h5>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Department</label>
+                                <InputSelect @bind-Value="currentSchedule.DepartmentId" class="form-select" @onchange="DepartmentChanged">
+                                    <option value="">-- Not Assigned --</option>
+                                    @if (departments != null)
+                                    {
+                                        @foreach (var dept in departments)
+                                        {
+                                            <option value="@dept.Id">@dept.Name</option>
+                                        }
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Employee (Optional)</label>
+                                <InputSelect @bind-Value="selectedEmployeeIdForSchedule" class="form-select">
+                                    <option value="0">-- Not Assigned --</option>
+                                    @if (employees != null && currentSchedule.DepartmentId != null)
+                                    {
+                                        @foreach (var emp in employees.Where(e => e.DepartmentId == currentSchedule.DepartmentId))
+                                        {
+                                            <option value="@emp.Id">@emp.FullName (@emp.EmployeeCode)</option>
+                                        }
+                                    }
+                                </InputSelect>
+                                <small class="form-text text-muted">
+                                    If both Department and Employee are selected, the Employee assignment takes precedence.
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseScheduleModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Assign Schedule Modal -->
+@if (showAssignModal)
+{
+    <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Assign "@currentSchedule.Name" Schedule</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAssignModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Department</label>
+                            <select @bind="selectedDepartmentId" class="form-select">
+                                <option value="0">-- Select Department --</option>
+                                @if (departments != null)
+                                {
+                                    @foreach (var dept in departments)
+                                    {
+                                        <option value="@dept.Id">@dept.Name</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Employee (Optional)</label>
+                            <select @bind="selectedEmployeeId" class="form-select">
+                                <option value="0">-- Select Employee --</option>
+                                @if (employees != null && selectedDepartmentId > 0)
+                                {
+                                    @foreach (var emp in employees.Where(e => e.DepartmentId == selectedDepartmentId))
+                                    {
+                                        <option value="@emp.Id">@emp.FullName (@emp.EmployeeCode)</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseAssignModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="AssignSchedule">Assign</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<WorkSchedule> workSchedules;
+    private List<Department> departments;
+    private List<Employee> employees;
+    private WorkSchedule currentSchedule = new WorkSchedule();
+    private bool showScheduleModal = false;
+    private bool showAssignModal = false;
+    private int selectedDepartmentId = 0;
+    private int selectedEmployeeId = 0;
+    private int selectedEmployeeIdForSchedule = 0;
+    
+    // Properties to handle time inputs
+    private string startTimeString = "09:00";
+    private string endTimeString = "17:00";
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+    
+    private async Task LoadData()
+    {
+        workSchedules = await WorkScheduleService.GetAllAsync();
+        departments = await DepartmentService.GetAllAsync();
+        employees = await EmployeeService.GetAllAsync();
+    }
+    
+    private void OpenScheduleModal(WorkSchedule schedule)
+    {
+        currentSchedule = new WorkSchedule
+        {
+            Id = schedule.Id,
+            Name = schedule.Name,
+            StartTime = schedule.StartTime,
+            EndTime = schedule.EndTime,
+            IsWorkingDaySunday = schedule.IsWorkingDaySunday,
+            IsWorkingDayMonday = schedule.IsWorkingDayMonday,
+            IsWorkingDayTuesday = schedule.IsWorkingDayTuesday,
+            IsWorkingDayWednesday = schedule.IsWorkingDayWednesday,
+            IsWorkingDayThursday = schedule.IsWorkingDayThursday,
+            IsWorkingDayFriday = schedule.IsWorkingDayFriday,
+            IsWorkingDaySaturday = schedule.IsWorkingDaySaturday,
+            FlexTimeAllowanceMinutes = schedule.FlexTimeAllowanceMinutes,
+            Description = schedule.Description,
+            DepartmentId = schedule.DepartmentId
+        };
+        
+        startTimeString = currentSchedule.StartTime.ToString(@"hh\:mm");
+        endTimeString = currentSchedule.EndTime.ToString(@"hh\:mm");
+        selectedEmployeeIdForSchedule = 0;
+        
+        showScheduleModal = true;
+    }
+    
+    private void DepartmentChanged()
+    {
+        // Reset selected employee when department changes
+        selectedEmployeeIdForSchedule = 0;
+        StateHasChanged();
+    }
+    
+    private void CloseScheduleModal()
+    {
+        showScheduleModal = false;
+    }
+    
+    private async Task SaveSchedule()
+    {
+        // Parse time strings to TimeSpan
+        if (TimeSpan.TryParse(startTimeString, out TimeSpan startTime))
+        {
+            currentSchedule.StartTime = startTime;
+        }
+        
+        if (TimeSpan.TryParse(endTimeString, out TimeSpan endTime))
+        {
+            currentSchedule.EndTime = endTime;
+        }
+        
+        // Save the schedule first
+        if (currentSchedule.Id == 0)
+        {
+            await WorkScheduleService.CreateAsync(currentSchedule);
+        }
+        else
+        {
+            await WorkScheduleService.UpdateAsync(currentSchedule);
+        }
+        
+        // Get the updated schedule with its ID (if it was just created)
+        var savedSchedule = currentSchedule.Id == 0 
+            ? workSchedules.FirstOrDefault(ws => ws.Name == currentSchedule.Name)
+            : workSchedules.FirstOrDefault(ws => ws.Id == currentSchedule.Id);
+            
+        if (savedSchedule != null && selectedEmployeeIdForSchedule > 0)
+        {
+            // If an employee is selected, assign the schedule to that employee
+            await WorkScheduleService.AssignToEmployeeAsync(savedSchedule.Id, selectedEmployeeIdForSchedule);
+        }
+        
+        await LoadData();
+        CloseScheduleModal();
+    }
+    
+    private async Task DeleteSchedule(int id)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this work schedule?");
+        
+        if (confirmed)
+        {
+            await WorkScheduleService.DeleteAsync(id);
+            await LoadData();
+        }
+    }
+    
+    private void OpenAssignModal(WorkSchedule schedule)
+    {
+        currentSchedule = schedule;
+        selectedDepartmentId = 0;
+        selectedEmployeeId = 0;
+        showAssignModal = true;
+    }
+    
+    private void CloseAssignModal()
+    {
+        showAssignModal = false;
+    }
+    
+    private async Task AssignSchedule()
+    {
+        if (selectedEmployeeId > 0)
+        {
+            // Assign to specific employee
+            await WorkScheduleService.AssignToEmployeeAsync(currentSchedule.Id, selectedEmployeeId);
+        }
+        else if (selectedDepartmentId > 0)
+        {
+            // Assign to department
+            await WorkScheduleService.AssignToDepartmentAsync(currentSchedule.Id, selectedDepartmentId);
+        }
+        
+        await LoadData();
+        CloseAssignModal();
+    }
+} 

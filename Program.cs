@@ -26,6 +26,8 @@ builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuth
 // Register application services
 builder.Services.AddScoped<DepartmentService>();
 builder.Services.AddScoped<EmployeeService>();
+builder.Services.AddScoped<WorkScheduleService>();
+builder.Services.AddScoped<WorkCalendarService>();
 builder.Services.AddScoped<AttendanceService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<IPrintingService, PrintingService>();

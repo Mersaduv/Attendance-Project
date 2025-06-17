@@ -26,6 +26,12 @@ namespace NewAttendanceProject.Models
         [ForeignKey("DepartmentId")]
         public Department Department { get; set; }
         
+        // Work Schedule assignment (can be null to use department's default schedule)
+        public int? WorkScheduleId { get; set; }
+        
+        [ForeignKey("WorkScheduleId")]
+        public WorkSchedule WorkSchedule { get; set; }
+        
         [Required(ErrorMessage = "Employee Code is required"), StringLength(20)]
         public string EmployeeCode { get; set; }
         

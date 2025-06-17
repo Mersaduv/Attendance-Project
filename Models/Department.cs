@@ -9,5 +9,9 @@ namespace NewAttendanceProject.Models
         
         [Required, StringLength(100)]
         public string Name { get; set; }
+        
+        // Navigation properties
+        public ICollection<Employee> Employees { get; set; } = new List<Employee>();
+        public ICollection<WorkSchedule> WorkSchedules { get; set; } = new List<WorkSchedule>();
     }
 } 

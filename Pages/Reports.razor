@@ -4,7 +4,10 @@
 @inject ReportService ReportService
 @inject EmployeeService EmployeeService
 @inject DepartmentService DepartmentService
+@inject WorkCalendarService WorkCalendarService
+@inject WorkScheduleService WorkScheduleService
 @inject IPrintingService PrintingService
+@inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @attribute [Authorize(Roles = "Admin")]
 
@@ -112,6 +115,36 @@
             </div>
         </div>
         <div class="card-body">
+            <!-- Charts Section -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">Attendance Overview</h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="height: 300px;">
+                                <canvas id="attendanceChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">Attendance Issues</h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="height: 300px;">
+                                <canvas id="issuesChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Report Table -->
+            <h5 class="mb-3">Detailed Report</h5>
             <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
@@ -129,12 +162,13 @@
                             <th>Check Out</th>
                             <th>Duration</th>
                             <th>Status</th>
+                            <th>Issues</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var item in report)
                         {
-                            <tr>
+                            <tr class="@GetRowClass(item)">
                                 <td>@item.Date.ToString("yyyy-MM-dd")</td>
                                 @if (reportType != "employee")
                                 {
@@ -152,13 +186,55 @@
                                     {
                                         <span class="badge bg-success">Present</span>
                                     }
+                                    else if (item.Status == "Early Departure")
+                                    {
+                                        <span class="badge bg-warning">Early Departure</span>
+                                    }
+                                    else if (item.Status == "Late Arrival")
+                                    {
+                                        <span class="badge bg-warning">Late Arrival</span>
+                                    }
                                     else if (item.Status == "Incomplete")
                                     {
                                         <span class="badge bg-warning">Incomplete</span>
                                     }
+                                    else if (item.Status == "Holiday")
+                                    {
+                                        <span class="badge bg-info">Holiday</span>
+                                    }
+                                    else if (item.Status == "Non-Working Day")
+                                    {
+                                        <span class="badge bg-secondary">Non-Working Day</span>
+                                    }
                                     else
                                     {
                                         <span class="badge bg-danger">@item.Status</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (item.IsLate)
+                                    {
+                                        <span class="badge bg-warning me-1" title="Late Arrival">Late</span>
+                                    }
+                                    @if (item.IsEarlyDeparture)
+                                    {
+                                        <span class="badge bg-warning me-1" title="Early Departure">Early Out</span>
+                                    }
+                                    @if (item.IsOvertime)
+                                    {
+                                        <span class="badge bg-primary me-1" title="Overtime">OT</span>
+                                    }
+                                    @if (item.IsHoliday && item.CheckInTime.HasValue)
+                                    {
+                                        <span class="badge bg-info me-1" title="Worked on Holiday">Holiday Work</span>
+                                    }
+                                    @if (item.IsNonWorkingDay && item.CheckInTime.HasValue)
+                                    {
+                                        <span class="badge bg-info me-1" title="Worked on Non-Working Day">Extra Day</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(item.Notes))
+                                    {
+                                        <i class="oi oi-comment-square text-muted" title="@item.Notes"></i>
                                     }
                                 </td>
                             </tr>
@@ -167,30 +243,110 @@
                 </table>
             </div>
             
-            <div class="mt-4">
+            <!-- Summary Section -->
+            <div class="mt-5">
                 <h5>Summary</h5>
                 <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-4 mb-3">
                         <div class="card">
                             <div class="card-body">
-                                <h6 class="card-title">Total Days</h6>
-                                <p class="card-text display-6">@GetDaysInRange()</p>
+                                <h6 class="card-title">Attendance</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Total Days:</span>
+                                            <span class="float-end">@reportStats.TotalDays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Present:</span>
+                                            <span class="float-end text-success">@reportStats.PresentDays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Late Arrivals:</span>
+                                            <span class="float-end text-warning">@reportStats.LateArrivalDays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Early Departures:</span>
+                                            <span class="float-end text-warning">@reportStats.EarlyDepartureDays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Absent:</span>
+                                            <span class="float-end text-danger">@reportStats.AbsentDays</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Holidays:</span>
+                                            <span class="float-end text-info">@reportStats.Holidays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Non-Working:</span>
+                                            <span class="float-end text-secondary">@reportStats.NonWorkingDays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Attendance Rate:</span>
+                                            <span class="float-end">@Math.Round(reportStats.AttendanceRate, 1)%</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-4 mb-3">
                         <div class="card">
                             <div class="card-body">
-                                <h6 class="card-title">Present Days</h6>
-                                <p class="card-text display-6">@report.Count(r => r.Status == "Present")</p>
+                                <h6 class="card-title">Attendance Issues</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Late Arrivals:</span>
+                                            <span class="float-end text-warning">@reportStats.LateArrivals</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Early Departures:</span>
+                                            <span class="float-end text-warning">@reportStats.EarlyDepartures</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Punctuality Rate:</span>
+                                            <span class="float-end">@Math.Round(reportStats.PunctualityRate, 1)%</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Total Issues:</span>
+                                            <span class="float-end">@(reportStats.LateArrivals + reportStats.EarlyDepartures)</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-4 mb-3">
                         <div class="card">
                             <div class="card-body">
-                                <h6 class="card-title">Absence Days</h6>
-                                <p class="card-text display-6">@report.Count(r => r.Status == "Absent")</p>
+                                <h6 class="card-title">Extra Work</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Overtime Days:</span>
+                                            <span class="float-end text-primary">@reportStats.OvertimeDays</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Holiday Work:</span>
+                                            <span class="float-end text-info">@report.Count(r => r.IsHoliday && r.CheckInTime.HasValue)</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Non-Working Day Work:</span>
+                                            <span class="float-end text-info">@report.Count(r => r.IsNonWorkingDay && r.CheckInTime.HasValue)</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span class="fw-bold">Overtime Rate:</span>
+                                            <span class="float-end">@Math.Round(reportStats.OvertimeRate, 1)%</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -204,9 +360,10 @@
     private string reportType = "employee";
     private int selectedEmployeeId = 0;
     private int selectedDepartmentId = 0;
-    private DateTime startDate = DateTime.Today.AddDays(-7);
+    private DateTime startDate = DateTime.Today.AddDays(-30); // Show a month by default
     private DateTime endDate = DateTime.Today;
     private List<AttendanceReportItem> report;
+    private AttendanceReportStatistics reportStats = new AttendanceReportStatistics();
     private List<Employee> employees;
     private List<Department> departments;
     private string errorMessage;
@@ -215,6 +372,14 @@
     {
         employees = await EmployeeService.GetAllAsync();
         departments = await DepartmentService.GetAllAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (report != null && report.Count > 0)
+        {
+            await RenderChartsAsync();
+        }
     }
 
     private bool IsGenerateDisabled()
@@ -244,6 +409,13 @@
                     startDate, endDate),
                 _ => null
             };
+            
+            // Calculate statistics
+            reportStats = ReportService.GetReportStatistics(report);
+            
+            // Render charts after report is generated
+            await Task.Delay(100); // Small delay to ensure DOM is updated
+            await RenderChartsAsync();
         }
         catch (Exception ex)
         {
@@ -267,6 +439,19 @@
     {
         return (endDate - startDate).Days + 1;
     }
+    
+    private string GetRowClass(AttendanceReportItem item)
+    {
+        if (item.Status == "Holiday" || item.IsHoliday)
+            return "table-info";
+        if (item.Status == "Early Departure" || item.Status == "Late Arrival")
+            return "table-warning";
+        if (item.Status == "Absent")
+            return "table-danger";
+        if (item.IsOvertime)
+            return "table-primary";
+        return "";
+    }
 
     private async Task PrintReport()
     {
@@ -275,4 +460,122 @@
 
         await PrintingService.PrintAsync("reportContent");
     }
+    
+    private async Task RenderChartsAsync()
+    {
+        // Prepare data for attendance overview chart
+        var attendanceData = new
+        {
+            labels = new[] { "Present", "Late Arrivals", "Early Departures", "Absent", "Holidays", "Non-Working" },
+            datasets = new[]
+            {
+                new
+                {
+                    label = "Days",
+                    data = new[] 
+                    { 
+                        reportStats.PresentDays,
+                        reportStats.LateArrivalDays,
+                        reportStats.EarlyDepartureDays,
+                        reportStats.AbsentDays,
+                        reportStats.Holidays,
+                        reportStats.NonWorkingDays
+                    },
+                    backgroundColor = new[]
+                    {
+                        "#28a745", // green - present
+                        "#ffc107", // yellow - late arrivals
+                        "#fd7e14", // orange - early departures
+                        "#dc3545", // red - absent
+                        "#17a2b8", // cyan - holidays
+                        "#6c757d"  // gray - non-working
+                    }
+                }
+            }
+        };
+        
+        // Prepare data for attendance issues chart
+        var issuesData = new
+        {
+            labels = new[] { "Late Arrivals", "Early Departures", "Overtime", "Holiday Work" },
+            datasets = new[]
+            {
+                new
+                {
+                    label = "Count",
+                    data = new[] 
+                    { 
+                        reportStats.LateArrivals,
+                        reportStats.EarlyDepartures,
+                        reportStats.OvertimeDays,
+                        report.Count(r => r.IsHoliday && r.CheckInTime.HasValue)
+                    },
+                    backgroundColor = new[]
+                    {
+                        "#ffc107", // yellow - late
+                        "#fd7e14", // orange - early
+                        "#007bff", // blue - overtime
+                        "#20c997"  // teal - holiday work
+                    }
+                }
+            }
+        };
+        
+        // Render charts using Chart.js
+        await JSRuntime.InvokeVoidAsync("renderCharts", attendanceData, issuesData);
+    }
+}
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    let attendanceChart = null;
+    let issuesChart = null;
+    
+    window.renderCharts = (attendanceData, issuesData) => {
+        // Destroy existing charts if they exist
+        if (attendanceChart) {
+            attendanceChart.destroy();
+        }
+        
+        if (issuesChart) {
+            issuesChart.destroy();
+        }
+        
+        // Render attendance overview chart
+        const attendanceCtx = document.getElementById('attendanceChart').getContext('2d');
+        attendanceChart = new Chart(attendanceCtx, {
+            type: 'pie',
+            data: attendanceData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    }
+                }
+            }
+        });
+        
+        // Render attendance issues chart
+        const issuesCtx = document.getElementById('issuesChart').getContext('2d');
+        issuesChart = new Chart(issuesCtx, {
+            type: 'bar',
+            data: issuesData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+    };
+</script>
 } 

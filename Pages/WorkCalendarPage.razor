@@ -1,0 +1,423 @@
+@page "/work-calendar"
+@using NewAttendanceProject.Models
+@using NewAttendanceProject.Services
+@inject WorkCalendarService WorkCalendarService
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Work Calendar - GhalibHR Attendance</PageTitle>
+
+<div class="container-fluid">
+    <h1 class="mt-4">Work Calendar</h1>
+    <p class="lead">Manage company holidays and non-working days.</p>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <button class="btn btn-primary" @onclick="() => OpenCalendarEntryModal(new WorkCalendar())">
+                <i class="fas fa-plus"></i> Add New Calendar Entry
+            </button>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text">Filter by Month</span>
+                <select class="form-select" @bind="selectedMonth">
+                    <option value="0">All Months</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+                <span class="input-group-text">Year</span>
+                <select class="form-select" @bind="selectedYear">
+                    @for (int year = DateTime.Now.Year - 5; year <= DateTime.Now.Year + 5; year++)
+                    {
+                        <option value="@year">@year</option>
+                    }
+                </select>
+                <button class="btn btn-outline-primary" @onclick="LoadCalendarEntries">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-12">
+            @if (calendarEntries == null)
+            {
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (!calendarEntries.Any())
+            {
+                <div class="alert alert-info">
+                    No calendar entries found for the selected period. Click "Add New Calendar Entry" to create one.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Recurring</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in calendarEntries.OrderBy(e => e.Date))
+                            {
+                                <tr>
+                                    <td>@entry.Date.ToString("dd MMM yyyy")</td>
+                                    <td>@entry.Name</td>
+                                    <td>
+                                        @switch (entry.EntryType)
+                                        {
+                                            case CalendarEntryType.Holiday:
+                                                <span class="badge bg-danger">Holiday</span>
+                                                break;
+                                            case CalendarEntryType.NonWorkingDay:
+                                                <span class="badge bg-warning text-dark">Non-Working Day</span>
+                                                break;
+                                            case CalendarEntryType.ShortDay:
+                                                <span class="badge bg-info">Short Day</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td>@entry.Description</td>
+                                    <td>
+                                        @if (entry.IsRecurringAnnually)
+                                        {
+                                            <span class="badge bg-success">Annual</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">One-time</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-info" @onclick="() => OpenCalendarEntryModal(entry)">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" @onclick="() => DeleteCalendarEntry(entry.Id)">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+    
+    <!-- Calendar View -->
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h3>Calendar View</h3>
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        @for (int i = 0; i < 12; i++)
+                        {
+                            int month = i + 1;
+                            <div class="col-md-4 mb-4">
+                                <h5>@(new DateTime(selectedYear, month, 1).ToString("MMMM"))</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th>Su</th>
+                                                <th>Mo</th>
+                                                <th>Tu</th>
+                                                <th>We</th>
+                                                <th>Th</th>
+                                                <th>Fr</th>
+                                                <th>Sa</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @{
+                                                var firstDay = new DateTime(selectedYear, month, 1);
+                                                var lastDay = firstDay.AddMonths(1).AddDays(-1);
+                                                int startDayOfWeek = (int)firstDay.DayOfWeek;
+                                                int days = DateTime.DaysInMonth(selectedYear, month);
+                                                int weekCount = (days + startDayOfWeek + 6) / 7;
+                                                
+                                                for (int week = 0; week < weekCount; week++)
+                                                {
+                                                    <tr>
+                                                        @for (int day = 0; day < 7; day++)
+                                                        {
+                                                            int dayOfMonth = week * 7 + day - startDayOfWeek + 1;
+                                                            if (dayOfMonth > 0 && dayOfMonth <= days)
+                                                            {
+                                                                var date = new DateTime(selectedYear, month, dayOfMonth);
+                                                                WorkCalendar entry = null;
+                                                                WorkCalendar recurringEntry = null;
+                                                                
+                                                                if (calendarEntries != null && calendarEntries.Any())
+                                                                {
+                                                                    entry = calendarEntries.FirstOrDefault(e => 
+                                                                        e.Date.Year == date.Year && 
+                                                                        e.Date.Month == date.Month && 
+                                                                        e.Date.Day == date.Day);
+                                                                
+                                                                    recurringEntry = calendarEntries.FirstOrDefault(e => 
+                                                                        e.IsRecurringAnnually && 
+                                                                        e.Date.Month == date.Month && 
+                                                                        e.Date.Day == date.Day);
+                                                                }
+                                                                    
+                                                                var calendarEntry = entry ?? recurringEntry;
+                                                                string bgClass = "";
+                                                                
+                                                                if (calendarEntry != null)
+                                                                {
+                                                                    bgClass = calendarEntry.EntryType switch
+                                                                    {
+                                                                        CalendarEntryType.Holiday => "bg-danger text-white",
+                                                                        CalendarEntryType.NonWorkingDay => "bg-warning",
+                                                                        CalendarEntryType.ShortDay => "bg-info text-white",
+                                                                        _ => ""
+                                                                    };
+                                                                }
+                                                                
+                                                                <td class="@bgClass" style="cursor: pointer;" @onclick="() => QuickAddDay(date)">
+                                                                    <div>@dayOfMonth</div>
+                                                                    @if (calendarEntry != null)
+                                                                    {
+                                                                        <small style="font-size: 0.7rem;">@calendarEntry.Name</small>
+                                                                    }
+                                                                </td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td></td>
+                                                            }
+                                                        }
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Calendar Entry Modal -->
+@if (showCalendarEntryModal)
+{
+    <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(currentCalendarEntry.Id == 0 ? "Add New" : "Edit") Calendar Entry</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCalendarEntryModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentCalendarEntry" OnValidSubmit="SaveCalendarEntry">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Date</label>
+                                <InputDate @bind-Value="currentCalendarEntry.Date" class="form-control" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Type</label>
+                                <InputSelect @bind-Value="currentCalendarEntry.EntryType" class="form-select">
+                                    <option value="@CalendarEntryType.Holiday">Holiday</option>
+                                    <option value="@CalendarEntryType.NonWorkingDay">Non-Working Day</option>
+                                    <option value="@CalendarEntryType.ShortDay">Short Day</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">Name</label>
+                                <InputText @bind-Value="currentCalendarEntry.Name" class="form-control" />
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">Description</label>
+                                <InputTextArea @bind-Value="currentCalendarEntry.Description" class="form-control" rows="2" />
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <div class="form-check">
+                                    <InputCheckbox @bind-Value="currentCalendarEntry.IsRecurringAnnually" class="form-check-input" id="isRecurring" />
+                                    <label class="form-check-label" for="isRecurring">
+                                        Recurring Annually (e.g., National Holiday)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseCalendarEntryModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<WorkCalendar> calendarEntries = new List<WorkCalendar>();
+    private WorkCalendar currentCalendarEntry = new WorkCalendar();
+    private bool showCalendarEntryModal = false;
+    
+    private int selectedMonth = DateTime.Now.Month;
+    private int selectedYear = DateTime.Now.Year;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCalendarEntries();
+    }
+    
+    private async Task LoadCalendarEntries()
+    {
+        List<WorkCalendar> loadedEntries = new List<WorkCalendar>();
+        
+        if (selectedMonth > 0)
+        {
+            // Load entries for specific month and year
+            loadedEntries = await WorkCalendarService.GetByMonthYearAsync(selectedMonth, selectedYear);
+            
+            // Also load recurring entries for this month
+            var recurringEntries = await WorkCalendarService.GetRecurringEntriesForMonthAsync(selectedMonth);
+            
+            // Merge the two lists, avoiding duplicates
+            if (recurringEntries != null)
+            {
+                foreach (var entry in recurringEntries)
+                {
+                    if (!loadedEntries.Any(e => e.Date.Month == entry.Date.Month && e.Date.Day == entry.Date.Day))
+                    {
+                        loadedEntries.Add(entry);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Load all entries
+            loadedEntries = await WorkCalendarService.GetAllAsync();
+        }
+        
+        calendarEntries = loadedEntries ?? new List<WorkCalendar>();
+    }
+    
+    private void OpenCalendarEntryModal(WorkCalendar entry)
+    {
+        currentCalendarEntry = new WorkCalendar
+        {
+            Id = entry.Id,
+            Date = entry.Id == 0 ? DateTime.Today : entry.Date,
+            Name = entry.Name ?? "",
+            Description = entry.Description ?? "",
+            EntryType = entry.EntryType,
+            IsRecurringAnnually = entry.IsRecurringAnnually
+        };
+        
+        showCalendarEntryModal = true;
+    }
+    
+    private void CloseCalendarEntryModal()
+    {
+        showCalendarEntryModal = false;
+    }
+    
+    private async Task SaveCalendarEntry()
+    {
+        if (currentCalendarEntry.Id == 0)
+        {
+            await WorkCalendarService.CreateAsync(currentCalendarEntry);
+        }
+        else
+        {
+            await WorkCalendarService.UpdateAsync(currentCalendarEntry);
+        }
+        
+        await LoadCalendarEntries();
+        CloseCalendarEntryModal();
+    }
+    
+    private async Task DeleteCalendarEntry(int id)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this calendar entry?");
+        
+        if (confirmed)
+        {
+            await WorkCalendarService.DeleteAsync(id);
+            await LoadCalendarEntries();
+        }
+    }
+    
+    private void QuickAddDay(DateTime date)
+    {
+        // Check if entry already exists for this day
+        var existingEntry = calendarEntries != null && calendarEntries.Any() ? 
+            calendarEntries.FirstOrDefault(e => 
+                e.Date.Year == date.Year && 
+                e.Date.Month == date.Month && 
+                e.Date.Day == date.Day) : 
+            null;
+            
+        if (existingEntry != null)
+        {
+            // Edit existing entry
+            OpenCalendarEntryModal(existingEntry);
+        }
+        else
+        {
+            // Create new entry for this day
+            var newEntry = new WorkCalendar
+            {
+                Date = date,
+                Name = "",
+                Description = "",
+                EntryType = CalendarEntryType.Holiday,
+                IsRecurringAnnually = false
+            };
+            
+            OpenCalendarEntryModal(newEntry);
+        }
+    }
+} 
