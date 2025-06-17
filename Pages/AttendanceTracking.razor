@@ -106,6 +106,9 @@
             <button class="btn btn-sm btn-primary ms-2" @onclick="LoadTodayAttendance">
                 <i class="oi oi-reload"></i> Refresh
             </button>
+            <button class="btn btn-sm btn-secondary ms-2" @onclick="UpdateAllWorkDurationsAndStatus" title="Update all attendance records">
+                <i class="oi oi-loop-circular"></i> Fix Records
+            </button>
         </div>
     </div>
     <div class="card-body">
@@ -449,6 +452,19 @@
         
         try
         {
+            // Calculate work duration if both check-in and check-out times are available
+            if (currentAttendance.CheckInTime.HasValue && currentAttendance.CheckOutTime.HasValue)
+            {
+                currentAttendance.WorkDuration = currentAttendance.CheckOutTime.Value - 
+                                               currentAttendance.CheckInTime.Value;
+                currentAttendance.IsComplete = true;
+            }
+            else
+            {
+                currentAttendance.WorkDuration = null;
+                currentAttendance.IsComplete = false;
+            }
+            
             await AttendanceService.UpdateAsync(currentAttendance);
             await LoadTodayAttendance();
             message = "Attendance updated successfully!";
@@ -468,5 +484,21 @@
         NotCheckedIn,
         CheckedIn,
         CheckedOut
+    }
+
+    private async Task UpdateAllWorkDurationsAndStatus()
+    {
+        try
+        {
+            await AttendanceService.UpdateAllWorkDurationsAndCompleteStatus();
+            message = "All attendance records updated successfully!";
+            alertClass = "alert-success";
+            await LoadTodayAttendance();
+        }
+        catch (Exception ex)
+        {
+            message = $"Error updating attendance records: {ex.Message}";
+            alertClass = "alert-danger";
+        }
     }
 } 

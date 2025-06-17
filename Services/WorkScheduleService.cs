@@ -138,5 +138,39 @@ namespace NewAttendanceProject.Services
             var schedule = await GetEmployeeWorkScheduleAsync(employeeId);
             return schedule?.CalculateExpectedWorkHours(date) ?? 0;
         }
+        
+        // Method to get the expected check-in and check-out times with grace periods applied
+        public async Task<(DateTime? LatestAllowedCheckIn, DateTime? EarliestAllowedCheckOut)> GetAllowedAttendanceTimesAsync(int employeeId, DateTime date)
+        {
+            var schedule = await GetEmployeeWorkScheduleAsync(employeeId);
+            if (schedule == null || !schedule.IsWorkingDay(date.DayOfWeek))
+            {
+                return (null, null);
+            }
+            
+            // Calculate the expected check-in time for the day
+            var expectedCheckInTime = new DateTime(
+                date.Year, 
+                date.Month, 
+                date.Day,
+                schedule.StartTime.Hours,
+                schedule.StartTime.Minutes,
+                0);
+                
+            // Calculate the expected check-out time for the day
+            var expectedCheckOutTime = new DateTime(
+                date.Year, 
+                date.Month, 
+                date.Day,
+                schedule.EndTime.Hours,
+                schedule.EndTime.Minutes,
+                0);
+                
+            // Apply grace periods
+            var latestAllowedCheckIn = expectedCheckInTime.AddMinutes(schedule.FlexTimeAllowanceMinutes);
+            var earliestAllowedCheckOut = expectedCheckOutTime.AddMinutes(-schedule.FlexTimeAllowanceMinutes);
+            
+            return (latestAllowedCheckIn, earliestAllowedCheckOut);
+        }
     }
 } 

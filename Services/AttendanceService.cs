@@ -96,11 +96,22 @@ namespace NewAttendanceProject.Services
             }
             else if (!attendance.CheckInTime.HasValue)
             {
-                attendance.CheckInTime = now;
-                _context.Entry(attendance).State = EntityState.Modified;
+                // Find the existing entity to update it
+                var existingAttendance = await _context.Attendances.FindAsync(attendance.Id);
+                if (existingAttendance != null)
+                {
+                    existingAttendance.CheckInTime = now;
+                }
             }
             
             await _context.SaveChangesAsync();
+            
+            // Refresh from database to ensure we have the latest version
+            if (attendance.Id > 0)
+            {
+                attendance = await _context.Attendances.FindAsync(attendance.Id);
+            }
+            
             return attendance;
         }
         
@@ -113,9 +124,26 @@ namespace NewAttendanceProject.Services
             
             if (attendance != null && attendance.CheckInTime.HasValue)
             {
-                attendance.CheckOutTime = now;
-                _context.Entry(attendance).State = EntityState.Modified;
-                await _context.SaveChangesAsync();
+                // Find the existing entity to update it
+                var existingAttendance = await _context.Attendances.FindAsync(attendance.Id);
+                if (existingAttendance != null)
+                {
+                    existingAttendance.CheckOutTime = now;
+                    
+                    // Calculate work duration
+                    if (existingAttendance.CheckInTime.HasValue)
+                    {
+                        existingAttendance.WorkDuration = now - existingAttendance.CheckInTime.Value;
+                    }
+                    
+                    // Update IsComplete flag
+                    existingAttendance.IsComplete = true;
+                    
+                    await _context.SaveChangesAsync();
+                    
+                    // Refresh from database
+                    attendance = await _context.Attendances.FindAsync(attendance.Id);
+                }
             }
             
             return attendance;
@@ -123,9 +151,53 @@ namespace NewAttendanceProject.Services
         
         public async Task<Attendance> UpdateAsync(Attendance attendance)
         {
-            _context.Entry(attendance).State = EntityState.Modified;
-            await _context.SaveChangesAsync();
-            return attendance;
+            try
+            {
+                // Find the existing entity from the database
+                var existingAttendance = await _context.Attendances.FindAsync(attendance.Id);
+                
+                if (existingAttendance == null)
+                {
+                    throw new Exception($"Attendance record with ID {attendance.Id} not found.");
+                }
+                
+                // Update properties
+                existingAttendance.EmployeeId = attendance.EmployeeId;
+                existingAttendance.Date = attendance.Date;
+                existingAttendance.CheckInTime = attendance.CheckInTime;
+                existingAttendance.CheckOutTime = attendance.CheckOutTime;
+                existingAttendance.Notes = attendance.Notes;
+                
+                // Calculate work duration if both check-in and check-out times are available
+                if (existingAttendance.CheckInTime.HasValue && existingAttendance.CheckOutTime.HasValue)
+                {
+                    existingAttendance.WorkDuration = existingAttendance.CheckOutTime.Value - 
+                                                    existingAttendance.CheckInTime.Value;
+                }
+                else
+                {
+                    existingAttendance.WorkDuration = null;
+                }
+                
+                // Update IsComplete flag
+                existingAttendance.IsComplete = existingAttendance.CheckInTime.HasValue && 
+                                              existingAttendance.CheckOutTime.HasValue;
+                
+                // Save changes
+                await _context.SaveChangesAsync();
+                
+                return existingAttendance;
+            }
+            catch (Exception)
+            {
+                // If there's still an issue, try detaching and then updating
+                _context.ChangeTracker.Clear();
+                
+                _context.Attendances.Update(attendance);
+                await _context.SaveChangesAsync();
+                
+                return attendance;
+            }
         }
         
         public async Task DeleteAsync(int id)
@@ -141,10 +213,6 @@ namespace NewAttendanceProject.Services
         // Method to check if an employee is late based on their work schedule
         public async Task<bool> IsLateCheckInAsync(int employeeId, DateTime checkInTime)
         {
-            var schedule = await _workScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
-            if (schedule == null)
-                return false;
-                
             // Check if it's a working day according to calendar and schedule
             bool isWorkingDay = await _workCalendarService.IsWorkingDateForEmployeeAsync(
                 employeeId, checkInTime.Date, _workScheduleService);
@@ -152,29 +220,19 @@ namespace NewAttendanceProject.Services
             if (!isWorkingDay)
                 return false;
                 
-            // Calculate the expected check-in time for the day
-            var expectedCheckInTime = new DateTime(
-                checkInTime.Year, 
-                checkInTime.Month, 
-                checkInTime.Day,
-                schedule.StartTime.Hours,
-                schedule.StartTime.Minutes,
-                0);
-                
-            // Add grace period (flex time allowance)
-            expectedCheckInTime = expectedCheckInTime.AddMinutes(schedule.FlexTimeAllowanceMinutes);
+            // Get allowed attendance times with grace periods applied
+            var (latestAllowedCheckIn, _) = await _workScheduleService.GetAllowedAttendanceTimesAsync(employeeId, checkInTime.Date);
             
+            if (!latestAllowedCheckIn.HasValue)
+                return false;
+                
             // Compare with actual check-in time
-            return checkInTime > expectedCheckInTime;
+            return checkInTime > latestAllowedCheckIn.Value;
         }
         
         // Method to check if an employee left early based on their work schedule
         public async Task<bool> IsEarlyCheckOutAsync(int employeeId, DateTime checkOutTime)
         {
-            var schedule = await _workScheduleService.GetEmployeeWorkScheduleAsync(employeeId);
-            if (schedule == null)
-                return false;
-                
             // Check if it's a working day according to calendar and schedule
             bool isWorkingDay = await _workCalendarService.IsWorkingDateForEmployeeAsync(
                 employeeId, checkOutTime.Date, _workScheduleService);
@@ -182,17 +240,14 @@ namespace NewAttendanceProject.Services
             if (!isWorkingDay)
                 return false;
                 
-            // Calculate the expected check-out time for the day
-            var expectedCheckOutTime = new DateTime(
-                checkOutTime.Year, 
-                checkOutTime.Month, 
-                checkOutTime.Day,
-                schedule.EndTime.Hours,
-                schedule.EndTime.Minutes,
-                0);
+            // Get allowed attendance times with grace periods applied
+            var (_, earliestAllowedCheckOut) = await _workScheduleService.GetAllowedAttendanceTimesAsync(employeeId, checkOutTime.Date);
+            
+            if (!earliestAllowedCheckOut.HasValue)
+                return false;
                 
             // Compare with actual check-out time
-            return checkOutTime < expectedCheckOutTime;
+            return checkOutTime < earliestAllowedCheckOut.Value;
         }
         
         // Method to calculate attendance statistics for an employee in a date range
@@ -246,6 +301,31 @@ namespace NewAttendanceProject.Services
             }
             
             return statistics;
+        }
+        
+        // Method to update WorkDuration and IsComplete fields for all attendance records
+        public async Task UpdateAllWorkDurationsAndCompleteStatus()
+        {
+            // Get all attendance records
+            var allAttendances = await _context.Attendances.ToListAsync();
+            
+            foreach (var attendance in allAttendances)
+            {
+                // Calculate WorkDuration if both check-in and check-out times are available
+                if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue)
+                {
+                    attendance.WorkDuration = attendance.CheckOutTime.Value - attendance.CheckInTime.Value;
+                    attendance.IsComplete = true;
+                }
+                else
+                {
+                    attendance.WorkDuration = null;
+                    attendance.IsComplete = attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue;
+                }
+            }
+            
+            // Save changes to the database
+            await _context.SaveChangesAsync();
         }
     }
     

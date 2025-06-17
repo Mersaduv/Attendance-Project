@@ -41,5 +41,62 @@
             window.location.reload();
         }
     </script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let attendanceChart = null;
+        let issuesChart = null;
+        
+        window.renderCharts = (attendanceData, issuesData) => {
+            // Destroy existing charts if they exist
+            if (attendanceChart) {
+                attendanceChart.destroy();
+            }
+            
+            if (issuesChart) {
+                issuesChart.destroy();
+            }
+            
+            // Render attendance overview chart
+            const attendanceCtx = document.getElementById('attendanceChart');
+            if (attendanceCtx) {
+                attendanceChart = new Chart(attendanceCtx.getContext('2d'), {
+                    type: 'pie',
+                    data: attendanceData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right'
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Render attendance issues chart
+            const issuesCtx = document.getElementById('issuesChart');
+            if (issuesCtx) {
+                issuesChart = new Chart(issuesCtx.getContext('2d'), {
+                    type: 'bar',
+                    data: issuesData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        };
+    </script>
 </body>
 </html>

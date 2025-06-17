@@ -35,6 +35,14 @@ namespace NewAttendanceProject.Services
             var report = new List<AttendanceReportItem>();
             var employee = await _context.Employees.FindAsync(employeeId);
             
+            if (employee == null)
+            {
+                return report;
+            }
+            
+            // Get employee's hire date
+            DateTime hireDate = employee.HireDate;
+            
             foreach (var attendance in attendances)
             {
                 var isLate = false;
@@ -94,10 +102,19 @@ namespace NewAttendanceProject.Services
             
             // Fill in missing dates in the range
             var currentDate = startDate;
+            var today = DateTime.Today;
             while (currentDate <= endDate)
             {
                 if (!report.Any(r => r.Date.Date == currentDate.Date))
                 {
+                    // Check if the date is before employee's hire date
+                    if (currentDate.Date < hireDate.Date)
+                    {
+                        // Skip dates before hire date - don't add them to the report
+                        currentDate = currentDate.AddDays(1);
+                        continue;
+                    }
+                    
                     // Check if the day is a holiday or non-working day
                     var isHoliday = !await _workCalendarService.IsWorkingDateAsync(currentDate);
                     
@@ -113,6 +130,11 @@ namespace NewAttendanceProject.Services
                     else if (isNonWorkingDay)
                     {
                         status = "Non-Working Day";
+                    }
+                    else if (currentDate.Date > today)
+                    {
+                        // Don't mark future dates as "Absent"
+                        status = "Scheduled";
                     }
                     
                     report.Add(new AttendanceReportItem

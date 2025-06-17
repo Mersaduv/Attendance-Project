@@ -42,6 +42,12 @@ namespace NewAttendanceProject.Services
         
         public async Task<Employee> CreateAsync(Employee employee)
         {
+            // Check if employee code is unique
+            if (!await IsEmployeeCodeUnique(employee.EmployeeCode))
+            {
+                throw new InvalidOperationException($"Employee code '{employee.EmployeeCode}' already exists. Please use a unique code.");
+            }
+            
             // Get the department's work schedule if it exists
             var departmentSchedules = await _workScheduleService.GetByDepartmentAsync(employee.DepartmentId);
             var departmentSchedule = departmentSchedules.FirstOrDefault();
@@ -68,6 +74,12 @@ namespace NewAttendanceProject.Services
         
         public async Task<Employee> UpdateAsync(Employee employee)
         {
+            // Check if employee code is unique
+            if (!await IsEmployeeCodeUnique(employee.EmployeeCode, employee.Id))
+            {
+                throw new InvalidOperationException($"Employee code '{employee.EmployeeCode}' already exists. Please use a unique code.");
+            }
+            
             // Find the existing entity
             var existingEmployee = await _context.Employees.FindAsync(employee.Id);
             if (existingEmployee == null)
@@ -117,6 +129,20 @@ namespace NewAttendanceProject.Services
                 _context.Employees.Remove(employee);
                 await _context.SaveChangesAsync();
             }
+        }
+        
+        // Check if employee code is unique
+        public async Task<bool> IsEmployeeCodeUnique(string employeeCode, int employeeId = 0)
+        {
+            // When updating, exclude the current employee from the check
+            if (employeeId > 0)
+            {
+                return !await _context.Employees
+                    .AnyAsync(e => e.EmployeeCode == employeeCode && e.Id != employeeId);
+            }
+            
+            // For new employees, check if the code is already used
+            return !await _context.Employees.AnyAsync(e => e.EmployeeCode == employeeCode);
         }
     }
 } 

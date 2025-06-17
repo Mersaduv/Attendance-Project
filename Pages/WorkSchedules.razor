@@ -84,9 +84,6 @@
                                             <button class="btn btn-sm btn-info" @onclick="() => OpenScheduleModal(schedule)">
                                                 <i class="fas fa-edit"></i> Edit
                                             </button>
-                                            <button class="btn btn-sm btn-success" @onclick="() => OpenAssignModal(schedule)">
-                                                <i class="fas fa-user-plus"></i> Assign
-                                            </button>
                                             <button class="btn btn-sm btn-danger" @onclick="() => DeleteSchedule(schedule.Id)">
                                                 <i class="fas fa-trash"></i> Delete
                                             </button>
@@ -175,6 +172,9 @@
                             <div class="col-md-6">
                                 <label class="form-label">Grace Period (minutes)</label>
                                 <InputNumber @bind-Value="currentSchedule.FlexTimeAllowanceMinutes" class="form-control" />
+                                <small class="form-text text-muted">
+                                    Applies to both late arrivals and early departures.
+                                </small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Description</label>
@@ -201,22 +201,6 @@
                                         }
                                     }
                                 </InputSelect>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Employee (Optional)</label>
-                                <InputSelect @bind-Value="selectedEmployeeIdForSchedule" class="form-select">
-                                    <option value="0">-- Not Assigned --</option>
-                                    @if (employees != null && currentSchedule.DepartmentId != null)
-                                    {
-                                        @foreach (var emp in employees.Where(e => e.DepartmentId == currentSchedule.DepartmentId))
-                                        {
-                                            <option value="@emp.Id">@emp.FullName (@emp.EmployeeCode)</option>
-                                        }
-                                    }
-                                </InputSelect>
-                                <small class="form-text text-muted">
-                                    If both Department and Employee are selected, the Employee assignment takes precedence.
-                                </small>
                             </div>
                         </div>
                         
@@ -252,22 +236,6 @@
                                     @foreach (var dept in departments)
                                     {
                                         <option value="@dept.Id">@dept.Name</option>
-                                    }
-                                }
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <label class="form-label">Employee (Optional)</label>
-                            <select @bind="selectedEmployeeId" class="form-select">
-                                <option value="0">-- Select Employee --</option>
-                                @if (employees != null && selectedDepartmentId > 0)
-                                {
-                                    @foreach (var emp in employees.Where(e => e.DepartmentId == selectedDepartmentId))
-                                    {
-                                        <option value="@emp.Id">@emp.FullName (@emp.EmployeeCode)</option>
                                     }
                                 }
                             </select>

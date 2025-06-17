@@ -25,12 +25,8 @@ namespace NewAttendanceProject.Models
         [Required]
         public string Notes { get; set; } = "";
         
-        [NotMapped]
-        public TimeSpan? WorkDuration => CheckOutTime.HasValue && CheckInTime.HasValue ? 
-            CheckOutTime.Value - CheckInTime.Value : 
-            null;
+        public TimeSpan? WorkDuration { get; set; }
         
-        [NotMapped]
-        public bool IsComplete => CheckInTime.HasValue && CheckOutTime.HasValue;
+        public bool IsComplete { get; set; }
     }
 } 

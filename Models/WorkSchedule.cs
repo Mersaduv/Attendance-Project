@@ -29,7 +29,7 @@ namespace NewAttendanceProject.Models
         [StringLength(500)]
         public string Description { get; set; } = "";
         
-        // Flexible time allowance in minutes (grace period for late check-ins)
+        // Flexible time allowance in minutes (grace period for both late check-ins and early check-outs)
         public int FlexTimeAllowanceMinutes { get; set; } = 15;
         
         // Department assignment (null if schedule applies to specific employees)
